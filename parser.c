@@ -2,8 +2,12 @@
 #include <linux/list.h>
 #include <stdio.h>
 #include <errno.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <ctype.h>
 
 #define printk printf
+#define kmalloc(size, unused, unused2) malloc(size)
 
 struct net_params {
 	bool use_rle;
@@ -73,6 +77,55 @@ static char *token_strings[TK_MAX] = {
 
 #define DRBD_CONFIG_SEPERATOR ';'
 
+int my_atoi(const char *c)
+{
+	int i;
+
+	if (c == NULL)
+		return 0;
+
+	i=0;
+	while (*c >= '0' && *c <= '9') {
+		i*=10;
+		i+=*c-'0';
+		c++;
+	}
+	return i;
+}
+
+/* This function intentionally does not allow for leading spaces. */
+
+static unsigned long my_strtoul(const char *nptr, char ** endptr, int base)
+{
+	unsigned long val = 0;
+
+	while (isdigit(*nptr)) {
+		val *= 10;
+		val += (*nptr)-'0';
+		nptr++;
+	}
+	if (endptr)
+		*endptr = (char*) nptr;
+
+	return val;
+}
+
+static char *my_strndup(const char *s, size_t n)
+{
+	char *new_string;
+
+	new_string = kmalloc(n+1, 0, 'DRBD');
+	if (new_string == NULL)
+		return NULL;
+
+	strncpy(new_string, s, n);
+	new_string[n] = '\0';
+
+	return new_string;
+}
+
+
+
 static enum token find_token(const char *s, const char **params_from, const char **params_to)
 {
 	enum token t;
@@ -105,7 +158,8 @@ static enum token find_token(const char *s, const char **params_from, const char
 int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 {
 	enum token t;
-	const char *params_from, *params_to;
+	const char *params_from, *params_to, *from;
+	size_t params_len;
 
 	if (strncmp(drbd_config, "drbd:", 5) != 0) {
 		printk("Parse error: drbd URL must start with drbd:\n");
@@ -124,10 +178,17 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 
 			params->resource = my_strndup(params_from, params_len);
 
-			if (params->resource == NULL) {
+			if (params->resource == NULL)
 				parse_error("Cannot allocate memory for resource name\n");
 			break;
+
+		default:
+			break;
 		}
+		if (*params_to == '\0')
+			break;
+
+		from = params_to+1;
 	}
 	return 0;
 }
