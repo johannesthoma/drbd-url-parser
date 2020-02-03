@@ -1,4 +1,10 @@
 #include <string.h>
+
+#define container_of(ptr, type, member) \
+        ((type *)( \
+        (char*)(ptr) - \
+        (unsigned long)(&((type *)0)->member)))
+
 #include <linux/list.h>
 #include <stdio.h>
 #include <errno.h>
@@ -62,6 +68,7 @@ enum token {
 	TK_INVALID,
 	TK_RESOURCE,
 	TK_PROTOCOL,
+	TK_NODE,
 	TK_END,
 	TK_MAX
 };
@@ -70,6 +77,7 @@ static char *token_strings[TK_MAX] = {
 	"",
 	"resource=",
 	"protocol=",
+	"node"
 };
 
 /* We use (for now) a semicolon, since the colon is also used for
@@ -96,7 +104,7 @@ int my_atoi(const char *c)
 
 /* This function intentionally does not allow for leading spaces. */
 
-static unsigned long my_strtoul(const char *nptr, char ** endptr, int base)
+static unsigned long my_strtoul(const char *nptr, const char ** endptr, int base)
 {
 	unsigned long val = 0;
 
@@ -106,7 +114,7 @@ static unsigned long my_strtoul(const char *nptr, char ** endptr, int base)
 		nptr++;
 	}
 	if (endptr)
-		*endptr = (char*) nptr;
+		*endptr = nptr;
 
 	return val;
 }
@@ -127,7 +135,7 @@ static char *my_strndup(const char *s, size_t n)
 
 
 
-static enum token find_token(const char *s, const char **params_from, const char **params_to)
+static enum token find_token(const char *s, int *index, const char **params_from, const char **params_to)
 {
 	enum token t;
 	const char *to;
@@ -137,8 +145,19 @@ static enum token find_token(const char *s, const char **params_from, const char
 
 	for (t=TK_INVALID+1;t<TK_END;t++) {
 		size_t len = strlen(token_strings[t]);
+		if (len == 0) continue;
+
 		if (strncmp(token_strings[t], s, len) == 0) {
-			*params_from= s+len;
+			if (token_strings[t][len-1] != '=') {
+				*index = my_strtoul(s+len, params_from, 10);
+/*				if (**params_from != '=')
+					return TK_INVALID;
+				(*params_from)++;
+*/
+			} else {
+				*params_from= s+len;
+			}
+
 			to = strchr(*params_from, DRBD_CONFIG_SEPERATOR);
 			if (to == NULL)
 				to = strchr(*params_from, '\0');
@@ -172,11 +191,38 @@ void init_params(struct drbd_params *p)
 				return -EINVAL; \
 			} while (0);
 
+struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
+{
+	struct node *n;
+
+	list_for_each_entry(struct node, n, &p->node_list, list) {
+		if (n->node_id == node_id)
+			return n;
+	}
+	n = kmalloc(sizeof(*n), 0, 'DRBD');
+	if (n == NULL)
+		return NULL;
+
+	n->hostname = NULL;
+	n->node_id = node_id;
+	n->address = NULL;
+
+	n->volume.volume_id = -1;
+	n->volume.minor = -1;
+	n->volume.disk = NULL; 
+	n->volume.meta_disk = NULL;
+
+	list_add(&n->list, &p->node_list);
+
+	return n;
+}
+
 int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 {
 	enum token t;
 	const char *params_from, *params_to, *from;
 	size_t params_len;
+	int index;
 
 	init_params(params);
 
@@ -187,9 +233,9 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 	from = drbd_config+5;
 
 	while (1) {
-		t=find_token(from, &params_from, &params_to);
+		t=find_token(from, &index, &params_from, &params_to);
 		if (t == TK_INVALID)
-			break;	/* TODO: parser error () */
+			parse_error("Invalid token\n");
 
 		if (t == TK_END)
 			break;
@@ -207,6 +253,59 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 				parse_error("Cannot allocate memory for resource name\n");
 			break;
 
+		case TK_PROTOCOL:
+		{
+			char c;
+
+			if (params->protocol != -1)
+				parse_error("Duplicate protocol= parameter\n");
+
+			c = toupper(*params_from);
+			if (c < 'A' || c > 'C')
+				parse_error("Protocol must be either A, B or C\n");
+			params->protocol = c - 0x40;
+			break;
+		}
+		case TK_NODE:
+		{
+			struct node *node;
+
+			printk("index is %d\n", index);
+
+			node = lookup_or_create_node(params, index);
+			if (node == NULL)
+				parse_error("Out of memory\n");
+
+			switch (*params_from) {
+			case '.':
+				params_from++;
+				t=find_token(params_from, &index, &params_from, &params_to);
+printf("t is %d\n", t);
+				switch (t) {
+				default: break;
+				}
+				break;
+			case '=':
+				if (params_len == 0)
+					parse_error("expected hostname\n");
+
+				params_from++;
+				params_len--;
+				if (node->hostname != NULL)
+					parse_error("Duplicate node<n>=<hostname> parameter\n");
+
+				node->hostname = my_strndup(params_from, params_len);
+				if (node->hostname == NULL)
+					parse_error("Cannot allocate memory for hostname\n");
+				break;
+			default:
+				parse_error("expected '.' or '=' after node\n");
+			}
+
+
+			break;
+		}
+
 		default:
 			break;
 		}
@@ -221,6 +320,7 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 int main(int argc, const char **argv)
 {
 	struct drbd_params p;
+	struct node *n;
 
 	if (argc != 2) {
 		printf("Usage: %s <drbd-URL>\n", argv[0]);
@@ -229,6 +329,11 @@ int main(int argc, const char **argv)
 	parse_drbd_params_new(argv[1], &p);
 	
 	printf("resource is %s\n", p.resource);
+	printf("protocol is %d\n", p.protocol);
+	list_for_each_entry(struct node, n, &p.node_list, list) {
+		printf("node %d\n", n->node_id);
+	}
+
 	return 0;
 }
 
