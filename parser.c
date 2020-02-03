@@ -135,7 +135,7 @@ static enum token find_token(const char *s, const char **params_from, const char
 	if (*s == '\0')
 		return TK_END;
 
-	for (t=TK_INVALID+1;t<TK_MAX;t++) {
+	for (t=TK_INVALID+1;t<TK_END;t++) {
 		size_t len = strlen(token_strings[t]);
 		if (strncmp(token_strings[t], s, len) == 0) {
 			*params_from= s+len;
@@ -167,9 +167,10 @@ void init_params(struct drbd_params *p)
 
 /* resource=<name>;protocol=<A,B or C>; ... */
 
-#define parse_error(s) \
-	printk("%s", s); \
-	return -EINVAL;
+#define parse_error(s) do {\
+				printk("%s", s); \
+				return -EINVAL; \
+			} while (0);
 
 int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 {
@@ -187,6 +188,12 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 
 	while (1) {
 		t=find_token(from, &params_from, &params_to);
+		if (t == TK_INVALID)
+			break;	/* TODO: parser error () */
+
+		if (t == TK_END)
+			break;
+
 		params_len = params_to-params_from;
 
 		switch (t) {
