@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <linux/drbd_limits.h>
 
 #define printk printf
 #define kmalloc(size, unused, unused2) malloc(size)
@@ -149,6 +150,21 @@ static enum token find_token(const char *s, const char **params_from, const char
 	return TK_INVALID;
 }
 
+void init_params(struct drbd_params *p)
+{
+	if (p == NULL)
+		return;
+
+	p->net.verify_alg = NULL;
+	p->net.ping_timeout = DRBD_PING_TIMEO_DEF;
+	p->net.ping_int = DRBD_PING_INT_DEF;
+
+	p->resource = NULL;
+	p->protocol = -1;
+
+	INIT_LIST_HEAD(&p->node_list);
+}
+
 /* resource=<name>;protocol=<A,B or C>; ... */
 
 #define parse_error(s) \
@@ -160,6 +176,8 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 	enum token t;
 	const char *params_from, *params_to, *from;
 	size_t params_len;
+
+	init_params(params);
 
 	if (strncmp(drbd_config, "drbd:", 5) != 0) {
 		printk("Parse error: drbd URL must start with drbd:\n");
@@ -190,6 +208,20 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 
 		from = params_to+1;
 	}
+	return 0;
+}
+
+int main(int argc, const char **argv)
+{
+	struct drbd_params p;
+
+	if (argc != 2) {
+		printf("Usage: %s <drbd-URL>\n", argv[0]);
+		exit(1);
+	}
+	parse_drbd_params_new(argv[1], &p);
+	
+	printf("resource is %s\n", p.resource);
 	return 0;
 }
 
