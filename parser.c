@@ -1,31 +1,59 @@
 #include <string.h>
+#include <linux/list.h>
+#include <stdio.h>
+#include <errno.h>
 
-static struct drbd_params {
-	char *resource;
-	int num_nodes;
+#define printk printf
+
+struct net_params {
+	bool use_rle;
+	char *verify_alg;
+	int timeout;
+	int ping_timeout;
+	int ping_int;
+	int connect_int;
+};
+
+struct disk_params {
+	int c_max_rate;
+	int c_fill_target;
+};
+
+	/* for now we allow only for one volume because that is
+	 * what WinDRBD boot feature needs.
+	 */
+
+struct volume {
+	int volume_id;	
 	int minor;
-	int volume;
+	char *disk;
+	char *meta_disk;
+#if 0
 	wchar_t *mount_point; /* might be NULL */
-	char *peer;
-	int peer_node_id;
-	int protocol;	/* 1=A, 2=B or 3=C */
-	char *my_address;
-	char *peer_address;
-} boot_devices[1] = {
-	{
-		.resource = "new-windows",
-		.num_nodes = 2,
-		.minor = 1,
-		.volume = 1,
-		.mount_point = NULL, 
-		.peer = "johannes-VirtualBox",
-		.peer_node_id = 1,
-		.protocol = 3,
-		.my_address = "0.0.0.0:7691",
-		.peer_address = "192.168.56.102:7691"
-	}
+#endif
+};
+	
+struct node {
+	struct list_head list;
 
-enum tokens {
+	char *hostname;
+	int node_id;
+	char *address;
+	struct volume volume;
+};
+
+struct drbd_params {
+	struct net_params net;
+	struct disk_params disk;
+	struct list_head node_list;
+
+	char *resource;
+	int protocol;	/* 1=A, 2=B or 3=C */
+};
+
+/* ------------------------------------------------------------------------- */
+
+enum token {
 	TK_INVALID,
 	TK_RESOURCE,
 	TK_PROTOCOL,
@@ -39,7 +67,13 @@ static char *token_strings[TK_MAX] = {
 	"protocol=",
 };
 
-enum token find_token(const char *s, const char **params_from, const char **params_to)
+/* We use (for now) a semicolon, since the colon is also used for
+ * IPv6 addresses (and for the port number).
+ */
+
+#define DRBD_CONFIG_SEPERATOR ';'
+
+static enum token find_token(const char *s, const char **params_from, const char **params_to)
 {
 	enum token t;
 	const char *to;
@@ -65,7 +99,7 @@ enum token find_token(const char *s, const char **params_from, const char **para
 /* resource=<name>;protocol=<A,B or C>; ... */
 
 #define parse_error(s) \
-	printf("%s", s); \
+	printk("%s", s); \
 	return -EINVAL;
 
 int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
@@ -79,7 +113,7 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 	}
 	from = drbd_config+5;
 
-	while (..) {
+	while (1) {
 		t=find_token(from, &params_from, &params_to);
 		params_len = params_to-params_from;
 
@@ -93,4 +127,8 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 			if (params->resource == NULL) {
 				parse_error("Cannot allocate memory for resource name\n");
 			break;
+		}
+	}
+	return 0;
+}
 
