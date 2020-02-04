@@ -35,7 +35,6 @@ struct disk_params {
 	 */
 
 struct volume {
-	int volume_id;	
 	int minor;
 	char *disk;
 	char *meta_disk;
@@ -60,6 +59,10 @@ struct drbd_params {
 
 	char *resource;
 	int protocol;	/* 1=A, 2=B or 3=C */
+	int volume_id;	/* must be the same on all nodes. More
+			 * than one volume currently not supported
+			 * (don't need it to boot windows).
+			 */
 };
 
 /* ------------------------------------------------------------------------- */
@@ -181,12 +184,8 @@ static enum token find_token(const char *s, int *index, const char **params_from
 		if (len == 0) continue;
 
 		if (strncmp(token_strings[t], s, len) == 0) {
-			if (token_strings[t][len-1] != '=') {
+			if (token_has_index(t)) {
 				*index = my_strtoul(s+len, params_from, 10);
-/*				if (**params_from != '=')
-					return TK_INVALID;
-				(*params_from)++;
-*/
 			} else {
 				*params_from= s+len;
 			}
@@ -219,6 +218,7 @@ void init_params(struct drbd_params *p)
 
 	p->resource = NULL;
 	p->protocol = -1;
+	p->volume_id = -1;
 
 	INIT_LIST_HEAD(&p->node_list);
 }
@@ -246,7 +246,6 @@ struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
 	n->node_id = node_id;
 	n->address = NULL;
 
-	n->volume.volume_id = -1;
 	n->volume.minor = -1;
 	n->volume.disk = NULL; 
 	n->volume.meta_disk = NULL;
@@ -340,9 +339,9 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 					break;
 
 				case TK_VOLUME:
-					if (node->volume.volume_id == -1)
-						node->volume.volume_id = index;
-					else if (node->volume.volume_id != index)
+					if (params->volume_id == -1)
+						params->volume_id = index;
+					else if (params->volume_id != index)
 						parse_error("Sorry, only one volume supported for now.\n");
 
 					if (*params_from != '.')
@@ -361,7 +360,7 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 					case TK_DISK:
 						if (node->volume.disk != NULL)
 							parse_error("Duplicate volume.disk parameter\n");
-						node->volume.disk = my_strndup(params_from, params_len);
+						node->volume.disk = my_strndup(params_from, params_to-params_from);
 						if (node->volume.disk == NULL)
 							parse_error("Cannot allocate memory for volume.disk\n");
 						break;
@@ -369,7 +368,7 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 					case TK_META_DISK:
 						if (node->volume.meta_disk != NULL)
 							parse_error("Duplicate volume.meta-disk parameter\n");
-						node->volume.meta_disk = my_strndup(params_from, params_len);
+						node->volume.meta_disk = my_strndup(params_from, params_to-params_from);
 						if (node->volume.meta_disk == NULL)
 							parse_error("Cannot allocate memory for volume.meta-disk\n");
 						break;
