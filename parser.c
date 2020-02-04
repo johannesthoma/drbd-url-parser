@@ -69,6 +69,14 @@ enum token {
 	TK_RESOURCE,
 	TK_PROTOCOL,
 	TK_NODE,
+	TK_USE_RLE,
+	TK_VERIFY_ALG,
+	TK_TIMEOUT,
+	TK_PING_TIMEOUT,
+	TK_PING_INT,
+	TK_CONNECT_INT,
+	TK_C_MAX_RATE,
+	TK_C_FILL_TARGET,
 	TK_END,
 	TK_MAX
 };
@@ -77,7 +85,15 @@ static char *token_strings[TK_MAX] = {
 	"",
 	"resource=",
 	"protocol=",
-	"node"
+	"node",
+	"use-rle=",
+	"verify-alg=",
+	"timeout=",
+	"ping-timeout=",
+	"ping-int=",
+	"connect-int=",
+	"c-max-rate=",
+	"c-fill-target="
 };
 
 /* We use (for now) a semicolon, since the colon is also used for
@@ -174,9 +190,15 @@ void init_params(struct drbd_params *p)
 	if (p == NULL)
 		return;
 
+	p->net.use_rle = false;
 	p->net.verify_alg = NULL;
+	p->net.timeout = DRBD_TIMEOUT_DEF;
 	p->net.ping_timeout = DRBD_PING_TIMEO_DEF;
 	p->net.ping_int = DRBD_PING_INT_DEF;
+	p->net.connect_int = DRBD_CONNECT_INT_DEF;
+
+	p->disk.c_max_rate = DRBD_C_MAX_RATE_DEF;
+	p->disk.c_fill_target = DRBD_C_FILL_TARGET_DEF;
 
 	p->resource = NULL;
 	p->protocol = -1;
@@ -305,6 +327,40 @@ printf("t is %d\n", t);
 
 			break;
 		}
+		case TK_USE_RLE:
+			break;
+
+		case TK_VERIFY_ALG:
+			if (params->net.verify_alg != NULL)
+				parse_error("Duplicate verify-alg parameter\n");
+			params->net.verify_alg = my_strndup(params_from, params_len);
+			if (params->net.verify_alg == NULL)
+				parse_error("Cannot allocate memory for hostname\n");
+			break;
+
+		case TK_TIMEOUT:
+			params->net.timeout = my_strtoul(params_from, NULL, 10);
+			break;
+
+		case TK_PING_TIMEOUT:
+			params->net.ping_timeout = my_strtoul(params_from, NULL, 10);
+			break;
+
+		case TK_PING_INT:
+			params->net.ping_int = my_strtoul(params_from, NULL, 10);
+			break;
+
+		case TK_CONNECT_INT:
+			params->net.connect_int = my_strtoul(params_from, NULL, 10);
+			break;
+
+		case TK_C_MAX_RATE:
+			params->disk.c_max_rate = my_strtoul(params_from, NULL, 10);
+			break;
+
+		case TK_C_FILL_TARGET:
+			params->disk.c_fill_target = my_strtoul(params_from, NULL, 10);
+			break;
 
 		default:
 			break;
