@@ -77,6 +77,8 @@ enum token {
 	TK_CONNECT_INT,
 	TK_C_MAX_RATE,
 	TK_C_FILL_TARGET,
+	TK_ADDRESS,
+	TK_HOSTNAME,
 	TK_END,
 	TK_MAX
 };
@@ -93,7 +95,9 @@ static char *token_strings[TK_MAX] = {
 	"ping-int=",
 	"connect-int=",
 	"c-max-rate=",
-	"c-fill-target="
+	"c-fill-target=",
+	"address=",
+	"hostname="
 };
 
 /* We use (for now) a semicolon, since the colon is also used for
@@ -304,7 +308,27 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 				t=find_token(params_from, &index, &params_from, &params_to);
 printf("t is %d\n", t);
 				switch (t) {
-				default: break;
+				case TK_ADDRESS:
+					if (node->address != NULL)
+						parse_error("Duplicate address for node parameter\n");
+
+					node->address = my_strndup(params_from, params_len);
+					if (node->address == NULL)
+						parse_error("Cannot allocate memory for hostname\n");
+
+					break;
+
+				case TK_HOSTNAME:
+					if (node->hostname != NULL)
+						parse_error("Duplicate node<n>.hostname=<hostname> parameter\n");
+
+					node->hostname = my_strndup(params_from, params_len);
+					if (node->hostname == NULL)
+						parse_error("Cannot allocate memory for hostname\n");
+					break;
+
+				default: 
+					parse_error("Token invalid for node\n");
 				}
 				break;
 			case '=':
