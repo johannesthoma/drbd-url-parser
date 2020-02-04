@@ -64,6 +64,7 @@ struct drbd_params {
 			 * (don't need it to boot windows).
 			 */
 	char *syslog_ip;
+	int this_node_id; /* My node id (the Windows client) */
 };
 
 /* ------------------------------------------------------------------------- */
@@ -88,6 +89,7 @@ enum token {
 	TK_DISK,
 	TK_META_DISK,
 	TK_SYSLOG_IP,
+	TK_THIS_NODE_ID,
 	TK_END,	/* insert before this token */
 	TK_MAX
 };
@@ -111,7 +113,8 @@ static char *token_strings[TK_MAX] = {
 	"minor=",
 	"disk=",
 	"meta-disk=",
-	"syslog-ip="
+	"syslog-ip=",
+	"this-node-id="
 };
 
 bool token_has_index(enum token t)
@@ -223,6 +226,7 @@ void init_params(struct drbd_params *p)
 	p->protocol = -1;
 	p->volume_id = -1;
 	p->syslog_ip = NULL;
+	p->this_node_id = -1;
 
 	INIT_LIST_HEAD(&p->node_list);
 }
@@ -257,6 +261,38 @@ struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
 	list_add(&n->list, &p->node_list);
 
 	return n;
+}
+
+int check_values(struct drbd_params *params)
+{
+	if (params->resource == NULL)
+		parse_error("No resource given\n");
+
+	if (params->protocol == -1)
+		parse_error("No protocol given\n");
+
+	if (params->volume_id == -1)
+		parse_error("No volume configured (use nodeX.volumeY...=val)\n");
+	if (params->this_node_id == -1)
+		parse_error("This node ID is unknown (use this-node-id=<n>)\n");
+
+	if (params->net.timeout < DRBD_TIMEOUT_MIN ||
+	    params->net.timeout > DRBD_TIMEOUT_MAX)
+		parse_error("net.timeout setting out of range\n");
+
+	if (params->net.ping_timeout < DRBD_PING_TIMEO_MIN ||
+	    params->net.ping_timeout > DRBD_PING_TIMEO_MAX)
+		parse_error("net.ping-timeout setting out of range\n");
+
+	if (params->net.ping_int < DRBD_PING_INT_MIN ||
+	    params->net.ping_int > DRBD_PING_INT_MAX)
+		parse_error("net.ping-int setting out of range\n");
+
+	if (params->net.connect_int < DRBD_CONNECT_INT_MIN ||
+	    params->net.connect_int > DRBD_CONNECT_INT_MAX)
+		parse_error("net.connect-int setting out of range\n");
+
+	return 0;
 }
 
 int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
@@ -305,6 +341,17 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 				parse_error("Cannot allocate memory for syslog_ip\n");
 			break;
 
+		case TK_THIS_NODE_ID:
+			if (params->this_node_id == -1) {
+				params->this_node_id = my_strtoul(params_from, &end_of_number, 10);
+				if (end_of_number != params_to)
+					parse_error("this node id should be numeric\n");
+			} else {
+				parse_error("this node id is duplicate\n");
+			}
+
+			break;
+			
 		case TK_PROTOCOL:
 		{
 			char c;
@@ -321,8 +368,6 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 		case TK_NODE:
 		{
 			struct node *node;
-
-			printk("index is %d\n", index);
 
 			node = lookup_or_create_node(params, index);
 			if (node == NULL)
@@ -476,7 +521,7 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 
 		from = params_to+1;
 	}
-	return 0;
+	return check_values(params);
 }
 
 int main(int argc, const char **argv)
