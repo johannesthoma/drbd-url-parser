@@ -63,6 +63,7 @@ struct drbd_params {
 			 * than one volume currently not supported
 			 * (don't need it to boot windows).
 			 */
+	char *syslog_ip;
 };
 
 /* ------------------------------------------------------------------------- */
@@ -86,7 +87,8 @@ enum token {
 	TK_MINOR,
 	TK_DISK,
 	TK_META_DISK,
-	TK_END,
+	TK_SYSLOG_IP,
+	TK_END,	/* insert before this token */
 	TK_MAX
 };
 
@@ -108,7 +110,8 @@ static char *token_strings[TK_MAX] = {
 	"volume",
 	"minor=",
 	"disk=",
-	"neta-disk="
+	"meta-disk=",
+	"syslog-ip="
 };
 
 bool token_has_index(enum token t)
@@ -219,6 +222,7 @@ void init_params(struct drbd_params *p)
 	p->resource = NULL;
 	p->protocol = -1;
 	p->volume_id = -1;
+	p->syslog_ip = NULL;
 
 	INIT_LIST_HEAD(&p->node_list);
 }
@@ -289,6 +293,16 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 
 			if (params->resource == NULL)
 				parse_error("Cannot allocate memory for resource name\n");
+			break;
+
+		case TK_SYSLOG_IP:
+			if (params->syslog_ip != NULL)
+				parse_error("Duplicate syslog_ip= parameter\n");
+
+			params->syslog_ip = my_strndup(params_from, params_len);
+
+			if (params->syslog_ip == NULL)
+				parse_error("Cannot allocate memory for syslog_ip\n");
 			break;
 
 		case TK_PROTOCOL:
