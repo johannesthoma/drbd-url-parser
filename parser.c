@@ -79,6 +79,10 @@ enum token {
 	TK_C_FILL_TARGET,
 	TK_ADDRESS,
 	TK_HOSTNAME,
+	TK_VOLUME,
+	TK_MINOR,
+	TK_DISK,
+	TK_META_DISK,
 	TK_END,
 	TK_MAX
 };
@@ -97,8 +101,17 @@ static char *token_strings[TK_MAX] = {
 	"c-max-rate=",
 	"c-fill-target=",
 	"address=",
-	"hostname="
+	"hostname=",
+	"volume",
+	"minor=",
+	"disk=",
+	"neta-disk="
 };
+
+bool token_has_index(enum token t)
+{
+	return (t == TK_NODE || t == TK_VOLUME);
+}
 
 /* We use (for now) a semicolon, since the colon is also used for
  * IPv6 addresses (and for the port number).
@@ -246,7 +259,7 @@ struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
 int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 {
 	enum token t;
-	const char *params_from, *params_to, *from;
+	const char *params_from, *params_to, *from, *end_of_number;
 	size_t params_len;
 	int index;
 
@@ -306,7 +319,6 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 			case '.':
 				params_from++;
 				t=find_token(params_from, &index, &params_from, &params_to);
-printf("t is %d\n", t);
 				switch (t) {
 				case TK_ADDRESS:
 					if (node->address != NULL)
@@ -327,10 +339,50 @@ printf("t is %d\n", t);
 						parse_error("Cannot allocate memory for hostname\n");
 					break;
 
+				case TK_VOLUME:
+					if (node->volume.volume_id == -1)
+						node->volume.volume_id = index;
+					else if (node->volume.volume_id != index)
+						parse_error("Sorry, only one volume supported for now.\n");
+
+					if (*params_from != '.')
+						parse_error("dot expected\n");
+
+					params_from++;
+					t=find_token(params_from, &index, &params_from, &params_to);
+					switch (t) {
+					case TK_MINOR:
+						if (node->volume.minor == -1)
+							node->volume.minor = my_strtoul(params_from, NULL, 10);
+						else
+							parse_error("volume minor is duplicate\n");
+						break;
+
+					case TK_DISK:
+						if (node->volume.disk != NULL)
+							parse_error("Duplicate volume.disk parameter\n");
+						node->volume.disk = my_strndup(params_from, params_len);
+						if (node->volume.disk == NULL)
+							parse_error("Cannot allocate memory for volume.disk\n");
+						break;
+
+					case TK_META_DISK:
+						if (node->volume.meta_disk != NULL)
+							parse_error("Duplicate volume.meta-disk parameter\n");
+						node->volume.meta_disk = my_strndup(params_from, params_len);
+						if (node->volume.meta_disk == NULL)
+							parse_error("Cannot allocate memory for volume.meta-disk\n");
+						break;
+					default: 
+						parse_error("Token invalid for volume\n");
+					}
+					break;
+
 				default: 
 					parse_error("Token invalid for node\n");
 				}
 				break;
+
 			case '=':
 				if (params_len == 0)
 					parse_error("expected hostname\n");
@@ -352,6 +404,10 @@ printf("t is %d\n", t);
 			break;
 		}
 		case TK_USE_RLE:
+			if (strncmp(params_from, "yes", 3) == 0)
+				params->net.use_rle = true;
+			if (strncmp(params_from, "no", 2) == 0)
+				params->net.use_rle = false;
 			break;
 
 		case TK_VERIFY_ALG:
@@ -363,30 +419,43 @@ printf("t is %d\n", t);
 			break;
 
 		case TK_TIMEOUT:
-			params->net.timeout = my_strtoul(params_from, NULL, 10);
+			params->net.timeout = my_strtoul(params_from, &end_of_number, 10);
+			if (end_of_number != params_to)
+				parse_error("timeout should be numeric\n");
 			break;
 
 		case TK_PING_TIMEOUT:
-			params->net.ping_timeout = my_strtoul(params_from, NULL, 10);
+			params->net.ping_timeout = my_strtoul(params_from, &end_of_number, 10);
+			if (end_of_number != params_to)
+				parse_error("ping-timeout should be numeric\n");
 			break;
 
 		case TK_PING_INT:
-			params->net.ping_int = my_strtoul(params_from, NULL, 10);
+			params->net.ping_int = my_strtoul(params_from, &end_of_number, 10);
+			if (end_of_number != params_to)
+				parse_error("ping-int should be numeric\n");
 			break;
 
 		case TK_CONNECT_INT:
-			params->net.connect_int = my_strtoul(params_from, NULL, 10);
+			params->net.connect_int = my_strtoul(params_from, &end_of_number, 10);
+			if (end_of_number != params_to)
+				parse_error("connect-int should be numeric\n");
 			break;
 
 		case TK_C_MAX_RATE:
-			params->disk.c_max_rate = my_strtoul(params_from, NULL, 10);
+			params->disk.c_max_rate = my_strtoul(params_from, &end_of_number, 10);
+			if (end_of_number != params_to)
+				parse_error("c-max-rate should be numeric\n");
 			break;
 
 		case TK_C_FILL_TARGET:
-			params->disk.c_fill_target = my_strtoul(params_from, NULL, 10);
+			params->disk.c_fill_target = my_strtoul(params_from, &end_of_number, 10);
+			if (end_of_number != params_to)
+				parse_error("c-fill-target should be numeric\n");
 			break;
 
 		default:
+			parse_error("Token invalid\n");
 			break;
 		}
 		if (*params_to == '\0')
