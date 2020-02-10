@@ -238,7 +238,7 @@ void init_params(struct drbd_params *p)
 				return -EINVAL; \
 			} while (0);
 
-struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
+struct node *lookup_node(struct drbd_params *p, int node_id)
 {
 	struct node *n;
 
@@ -246,6 +246,17 @@ struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
 		if (n->node_id == node_id)
 			return n;
 	}
+	return NULL;
+}
+
+struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
+{
+	struct node *n;
+
+	n = lookup_node(p, node_id);
+	if (n != NULL)
+		return n;
+
 	n = kmalloc(sizeof(*n), 0, 'DRBD');
 	if (n == NULL)
 		return NULL;
@@ -265,6 +276,8 @@ struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
 
 int check_values(struct drbd_params *params)
 {
+	struct node *this_node, *n;
+
 	if (params->resource == NULL)
 		parse_error("No resource given\n");
 
@@ -291,6 +304,10 @@ int check_values(struct drbd_params *params)
 	if (params->net.connect_int < DRBD_CONNECT_INT_MIN ||
 	    params->net.connect_int > DRBD_CONNECT_INT_MAX)
 		parse_error("net.connect-int setting out of range\n");
+
+	this_node = lookup_node(params, params->this_node_id);
+	if (this_node == NULL)
+		parse_error("this node does not exist (need to specify some parameters with nodeN)\n");
 
 	return 0;
 }
