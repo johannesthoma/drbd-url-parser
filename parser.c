@@ -1,3 +1,5 @@
+#ifdef USER_MODE
+
 #include <string.h>
 
 #define container_of(ptr, type, member) \
@@ -15,6 +17,12 @@
 
 #define printk printf
 #define kmalloc(size, unused, unused2) malloc(size)
+
+#else		/* windows kernel */
+
+/* TODO: .... */
+
+#endif
 
 struct net_params {
 	bool use_rle;
@@ -309,6 +317,21 @@ int check_values(struct drbd_params *params)
 	if (this_node == NULL)
 		parse_error("this node does not exist (need to specify some parameters with nodeN)\n");
 
+	list_for_each_entry(struct node, n, &params->node_list, list) {
+		if (n->node_id > 32)
+			parse_error("node-id out of range\n");
+		if (n->hostname == NULL)
+			parse_error("need hostname for node\n");
+		if (n->address == NULL)
+			parse_error("need address for node\n");
+	}
+	if (this_node->volume.minor == -1)
+		parse_error("need valid minor for local volume\n");
+
+/* TODO: disk and meta_disk can be NULL? In that case we are running
+ * diskless (but still need a minor).
+ */
+
 	return 0;
 }
 
@@ -541,6 +564,8 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 	return check_values(params);
 }
 
+#ifdef USER_MODE
+
 int main(int argc, const char **argv)
 {
 	struct drbd_params p;
@@ -561,3 +586,4 @@ int main(int argc, const char **argv)
 	return 0;
 }
 
+#endif
