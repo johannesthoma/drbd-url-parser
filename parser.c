@@ -20,7 +20,9 @@
 
 #else		/* windows kernel */
 
-/* TODO: .... */
+#include <drbd_windows.h>
+#include <linux/list.h>
+#include <linux/drbd_limits.h>
 
 #endif
 
@@ -136,22 +138,6 @@ bool token_has_index(enum token t)
 
 #define DRBD_CONFIG_SEPERATOR ';'
 
-int my_atoi(const char *c)
-{
-	int i;
-
-	if (c == NULL)
-		return 0;
-
-	i=0;
-	while (*c >= '0' && *c <= '9') {
-		i*=10;
-		i+=*c-'0';
-		c++;
-	}
-	return i;
-}
-
 /* This function intentionally does not allow for leading spaces. */
 
 static unsigned long my_strtoul(const char *nptr, const char ** endptr, int base)
@@ -215,7 +201,7 @@ static enum token find_token(const char *s, int *index, const char **params_from
 	return TK_INVALID;
 }
 
-void init_params(struct drbd_params *p)
+static void init_params(struct drbd_params *p)
 {
 	if (p == NULL)
 		return;
@@ -246,7 +232,7 @@ void init_params(struct drbd_params *p)
 				return -EINVAL; \
 			} while (0);
 
-struct node *lookup_node(struct drbd_params *p, int node_id)
+static struct node *lookup_node(struct drbd_params *p, int node_id)
 {
 	struct node *n;
 
@@ -257,7 +243,7 @@ struct node *lookup_node(struct drbd_params *p, int node_id)
 	return NULL;
 }
 
-struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
+static struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
 {
 	struct node *n;
 
@@ -282,7 +268,7 @@ struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
 	return n;
 }
 
-int check_values(struct drbd_params *params)
+static int check_values(struct drbd_params *params)
 {
 	struct node *this_node, *n;
 
