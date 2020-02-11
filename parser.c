@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <linux/drbd_limits.h>
+#include "drbd_url.h"
 
 #define printk printf
 #define kmalloc(size, unused, unused2) malloc(size)
@@ -23,59 +24,9 @@
 #include <drbd_windows.h>
 #include <linux/list.h>
 #include <linux/drbd_limits.h>
+#include "drbd_url.h"
 
 #endif
-
-struct net_params {
-	bool use_rle;
-	char *verify_alg;
-	int timeout;
-	int ping_timeout;
-	int ping_int;
-	int connect_int;
-};
-
-struct disk_params {
-	int c_max_rate;
-	int c_fill_target;
-};
-
-	/* for now we allow only for one volume because that is
-	 * what WinDRBD boot feature needs.
-	 */
-
-struct volume {
-	int minor;
-	char *disk;
-	char *meta_disk;
-#if 0
-	wchar_t *mount_point; /* might be NULL */
-#endif
-};
-	
-struct node {
-	struct list_head list;
-
-	char *hostname;
-	int node_id;
-	char *address;
-	struct volume volume;
-};
-
-struct drbd_params {
-	struct net_params net;
-	struct disk_params disk;
-	struct list_head node_list;
-
-	char *resource;
-	int protocol;	/* 1=A, 2=B or 3=C */
-	int volume_id;	/* must be the same on all nodes. More
-			 * than one volume currently not supported
-			 * (don't need it to boot windows).
-			 */
-	char *syslog_ip;
-	int this_node_id; /* My node id (the Windows client) */
-};
 
 /* ------------------------------------------------------------------------- */
 
@@ -271,6 +222,7 @@ static struct node *lookup_or_create_node(struct drbd_params *p, int node_id)
 static int check_values(struct drbd_params *params)
 {
 	struct node *this_node, *n;
+	int max_node_id = -1;
 
 	if (params->resource == NULL)
 		parse_error("No resource given\n");
@@ -310,18 +262,24 @@ static int check_values(struct drbd_params *params)
 			parse_error("need hostname for node\n");
 		if (n->address == NULL)
 			parse_error("need address for node\n");
+		if (n->node_id > max_node_id)
+			max_node_id = n->node_id;
 	}
 	if (this_node->volume.minor == -1)
 		parse_error("need valid minor for local volume\n");
 
-/* TODO: disk and meta_disk can be NULL? In that case we are running
+/* Disk and meta_disk can be NULL. In that case we are running
  * diskless (but still need a minor).
  */
+
+	if (max_node_id == -1)
+		parse_error("No nodes?\n");
+	params->num_nodes = max_node_id;
 
 	return 0;
 }
 
-int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
+int parse_drbd_url(const char *drbd_config, struct drbd_params *params)
 {
 	enum token t;
 	const char *params_from, *params_to, *from, *end_of_number;
@@ -561,7 +519,7 @@ int main(int argc, const char **argv)
 		printf("Usage: %s <drbd-URL>\n", argv[0]);
 		exit(1);
 	}
-	parse_drbd_params_new(argv[1], &p);
+	parse_drbd_url(argv[1], &p);
 	
 	printf("resource is %s\n", p.resource);
 	printf("protocol is %d\n", p.protocol);
