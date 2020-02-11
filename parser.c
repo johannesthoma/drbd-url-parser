@@ -403,6 +403,7 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 			case '.':
 				params_from++;
 				t=find_token(params_from, &index, &params_from, &params_to);
+				params_len = params_to-params_from;
 				switch (t) {
 				case TK_ADDRESS:
 					if (node->address != NULL)
@@ -434,6 +435,8 @@ int parse_drbd_params_new(const char *drbd_config, struct drbd_params *params)
 
 					params_from++;
 					t=find_token(params_from, &index, &params_from, &params_to);
+					params_len = params_to-params_from;
+
 					switch (t) {
 					case TK_MINOR:
 						if (node->volume.minor == -1)
