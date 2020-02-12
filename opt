@@ -1,0 +1,1 @@
+drbd:resource=windows10-boot;protocol=C;this-node-id=2;node2.address=0.0.0.0:7695;node2.volume1.minor=42;node2.hostname=windows;node1.hostname=johannes-VirtualBox;node1.address=192.168.56.102:7695;timeout=60;ping-timeout=30;ping-int=10;connect-int=20

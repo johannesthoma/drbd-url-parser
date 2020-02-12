@@ -1,0 +1,1 @@
+drbd:r=windows10-boot;pr=C;tn=2;n2.a=0.0.0.0:7695;n2.v1.m=42;n2.h=windows;n1.h=johannes-VirtualBox;n1.a=192.168.56.102:7695;t=60;pt=30;pi=10;ci=20;n3.h=wintestubuntu;n3.a=192.168.56.104:7695;n4.h=nodeX;n4.a=192.168.56.105:7695
